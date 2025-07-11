@@ -5,8 +5,9 @@ import psutil
 from crawl4ai import AsyncWebCrawler, CacheMode
 from loguru import logger
 
-# from second_brain_offline import utils
-# from second_brain_offline.domain import Document, DocumentMetadata
+
+from second_brain_offline import utils
+from second_brain_offline.domain import Document, DocumentMetadata
 
 #Crawl4AICrawler is a class that allows you to crawl the web asynchronously.
 class Crawl4AICrawler:
@@ -144,6 +145,53 @@ class Crawl4AICrawler:
             Document | None: New document if crawl was successful, None otherwise.
         """
 
+        #This is the entry point for the worker. 
+        #The code within this block will not run until it can successfully acquire a "slot" from the semaphore.
         async with semaphor:
+            #arun is a method that allows you to crawl a single URL asynchronously.
+            #url is the URL to crawl.
+            result = await crawler.arun(url=url)
+            #Rate limiting -> to avoid overwhelming the server with requests and get blocked :)
+            await asyncio.sleep(0.5)
+
+            #if the result is not successful, return None
+            if not result or not result.success:
+                logger.warning(f"Failed to crawl {url}")
+                return None
+            
+            #get the child links from the result
+            child_links = [
+                link['href']
+                for link in result.links['internal'] + result.links['external']
+            ]
+
+            #if the result has metadata, get the title
+            if result.metadata:
+                # It tries to get the value for the key "title". If it finds it, it returns the value and removes it from the metadata dictionary 
+                # (to avoid storing it twice). If it doesn't find the key, it returns a default empty string
+                title = result.metadata.pop('title') or ''
+            else:
+                title = ''
+            #generate a random hex string of length 32 to provide a unique id to the document
+            document_id = utils.generate_random_hex(length=32)
+
+            #return the document
+            return Document(
+                id=document_id,
+                metadata=DocumentMetadata(
+                    id=document_id,
+                    url=url,
+                    title=title,
+                    properties=result.metadata or {},
+                ),
+                parent_metadata=page.metadata,
+                content=str(result.markdown),
+                child_url=child_links,
+            )
+        
+        
+
+                
+
 
             
