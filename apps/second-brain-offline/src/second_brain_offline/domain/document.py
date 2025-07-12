@@ -124,19 +124,21 @@ class Document(BaseModel):
             with open(txt_path,'w',encoding='utf-8') as f:
                 f.write(self.content)
 
-    def obsfucate(self) -> 'Document':
-         """Create an obfuscated version of this document by modifying in place.
+    #obfuscate is a method that obfuscates the document
+    def obfuscate(self) -> "Document":
+        """Create an obfuscated version of this document by modifying in place.
 
         Returns:
             Document: Self, with obfuscated metadata and parent_metadata.
         """
         #  Purpose: To hide or remove potentially sensitive data from the metadata and parent_metadata fields.
-
-        self.metadata = self.metadata.obsfucate()
+        #  obsfucate is a method that obfuscates the metadata and parent_metadata fields.
+        self.metadata = self.metadata.obfuscate()
         self.parent_metadata = (
-            self.parent_metadata.obsfucate() if self.parent_metadata else None
+            self.parent_metadata.obfuscate() if self.parent_metadata else None
         )
         self.id = self.metadata.id
+
         return self
 
     #__eq__ is a method that compares two Document objects for equality.
