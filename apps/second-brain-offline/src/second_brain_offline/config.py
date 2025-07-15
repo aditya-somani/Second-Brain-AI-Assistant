@@ -7,6 +7,7 @@
 # It validates their data types (e.g., ensuring a key is a string) and even runs custom checks (like making sure an API key isn't empty). 
 # If any configuration is invalid, the application fails immediately with a clear error message.
 
+# NOTE :- Check the pydantic documentation for more details on all things used in this file
 
 
 from loguru import logger
@@ -54,4 +55,62 @@ class Settings(BaseSettings):
         description="Project name for Comet ML and Opik tracking.",
     )
 
+    # --- Hugging Face Configuration ---
+    HUGGINGFACE_ACCESS_TOKEN: str | None = Field(
+        default=None, description="Access token for Hugging Face API authentication."
+    )
+    HUGGINGFACE_DEDICATED_ENDPOINT: str | None = Field(
+        default=None,
+        description="Dedicated endpoint URL for real-time inference. "
+        "If provided, we will use the dedicated endpoint instead of OpenAI. "
+        "For example, https://um18v2aeit3f6g1b.eu-west-1.aws.endpoints.huggingface.cloud/v1/, "
+        "with /v1 after the endpoint URL.",
+    )
+
+    # --- MongoDB Atlas Configuration ---
+    MONGODB_DATABASE_NAME: str = Field(
+        default="second_brain_course",
+        description="Name of the MongoDB database.",
+    )
+    MONGODB_URI: str = Field(
+        default="mongodb://decodingml:decodingml@localhost:27017/?directConnection=true",
+        description="Connection URI for the local MongoDB Atlas instance.",
+    )
+
+    # --- Notion API Configuration ---
+    NOTION_SECRET_KEY: str | None = Field(
+        default=None, description="Secret key for Notion API authentication."
+    )
+
+    # ---Gemini Configuration ---
+    GEMINI_API_KEY: str = Field(
+        description="API key for Gemini API authentication."
+    )
+
+    @field_validator('GEMINI_API_KEY')
+    # This is a custom validator function for a specific field.
+    # Purpose: To add validation logic that goes beyond simple type checking. In this case, it ensures the OPENAI_API_KEY is not an empty string.
+    @classmethod #Validators in Pydantic are typically class methods 
+    def check_not_empty(cls, value:str, info) -> str:
+        # cls: This is the class itself (Settings in this case).
+        # value: This is the value of the field being validated (e.g., the actual API key string).
+        # info: An object containing metadata about the field, such as its name (info.field_name).
+        if not value or value.strip() == '':
+            logger.error(f"The {info.field_name} cannot be empty")
+            raise ValueError(f"The {info.field_name} cannot be empty")
+        return value
     
+try:
+    settings = Settings()
+except Exception as e:
+    logger.error(f"Error loading configuration: {e}")
+    raise SystemExit(e)
+
+    
+
+    
+
+
+
+
+
