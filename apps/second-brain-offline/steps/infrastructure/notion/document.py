@@ -112,7 +112,7 @@ class NotionDocumentClient:
         
     # Purpose: It's where the raw, proprietary Notion format is translated into the clean, standardized Markdown that the rest of the AI pipeline relies on
     def __parse_blocks(
-            self, blocks: list[dict], indepth: int = 0
+            self, blocks: list[dict], depth: int = 0
     ) -> tuple[str, list[str]]:
         """Parse Notion blocks into text content and extract URLs.
 
@@ -146,61 +146,132 @@ class NotionDocumentClient:
             # This pattern repeats for paragraph, quote, bulleted_list_item, to_do, and code, 
             # each applying the appropriate Markdown syntax (e.g., - for lists, [] for to-do items, ``` for code blocks).
                 
+            # Handle Notion paragraph and quote blocks
             elif block_type in {
                 "paragraph",
                 "quote",
             }:
+                # Convert rich_text to plain/markdown text and add newline
                 content += f"{self.__parse_rich_text(block[block_type].get('rich_text', []))}\n"
+                # Collect any URLs in this text
                 urls.extend(self.__extract_urls(block[block_type].get("rich_text", [])))
+
+            # Handle bulleted and numbered list items
             elif block_type in {"bulleted_list_item", "numbered_list_item"}:
+                # Format as markdown list item (e.g., "- item")
                 content += f"- {self.__parse_rich_text(block[block_type].get('rich_text', []))}\n"
                 urls.extend(self.__extract_urls(block[block_type].get("rich_text", [])))
+
+            # Handle to-do items (checkbox-style tasks)
             elif block_type == "to_do":
+                # Format as markdown to-do with empty checkbox (can be extended to track completion)
                 content += f"[] {self.__parse_rich_text(block['to_do'].get('rich_text', []))}\n"
                 urls.extend(self.__extract_urls(block[block_type].get("rich_text", [])))
-            elif block_type == "code":
-                content += f"```\n{self.__parse_rich_text(block['code'].get('rich_text', []))}\n````\n"
-                urls.extend(self.__extract_urls(block[block_type].get("rich_text", [])))
-            elif block_type == "image":
-                content += f"[Image]({block['image'].get('external', {}).get('url', 'No URL')})\n"
-            elif block_type == "divider":
-                content += "---\n\n"
-            elif block_type == "child_page" and depth < 3:
-                child_id = block["id"]
-                child_title = block.get("child_page", {}).get("title", "Untitled")
-                content += f"\n\n<child_page>\n# {child_title}\n\n"
 
+            # Handle code blocks
+            elif block_type == "code":
+                # Wrap content in Markdown code block syntax (```
+                content += f"```\n{self.__parse_rich_text(block['code'].get('rich_text', []))}\n```"
+                urls.extend(self.__extract_urls(block[block_type].get("rich_text", [])))
+
+            # Handle image blocks (external image links)
+            elif block_type == "image":
+                # Safely extract image URL, fallback to "No URL" if missing
+                content += f"[Image]({block['image'].get('external', {}).get('url', 'No URL')})\n"
+
+            # Handle divider blocks (horizontal rule)
+            elif block_type == "divider":
+                # Render a markdown horizontal rule
+                content += "---\n\n"
+
+            # Handle sub-pages only if recursion depth is shallow enough
+            elif block_type == "child_page" and depth < 3:
+                child_id = block["id"]  # Extract child page ID for retrieval
+                # Get the title of the child page; fallback to placeholder if missing
+                child_title = block.get("child_page", {}).get("title", "Untitled")
+                
+                # Add metadata line and start content section for the sub-page
+                content += f"\n\n<child_page>\n# {child_title}\n\n"
+                
+                # Recursively retrieve and parse the child page content
                 child_blocks = self.__retrieve_child_blocks(child_id)
                 child_content, child_urls = self.__parse_blocks(child_blocks, depth + 1)
+                
+                # Add parsed child content and mark end of child page
                 content += child_content + "\n</child_page>\n\n"
                 urls += child_urls
 
+            # Handle link previews (visual/inline link cards)
             elif block_type == "link_preview":
                 url = block.get("link_preview", {}).get("url", "")
+                # Display the preview as a markdown link
                 content += f"[Link Preview]({url})\n"
-
+                # Normalize and collect for downstream crawling
                 urls.append(self.__normalize_url(url))
+
+            # Catch any unrecognized block types for logging/debugging
             else:
                 logger.warning(f"Unknown block type: {block_type}")
 
-            # Parse child pages that are bullet points, toggles or similar structures.
-            # Subpages (child_page) are parsed individually as a block.
+            # Check if this block (but not a full child_page) has nested children
+            # Usually applies to bullet lists, toggles, etc.
             if (
                 block_type != "child_page"
                 and "has_children" in block
                 and block["has_children"]
             ):
+                # Recursively retrieve and parse nested blocks ("children")
                 child_blocks = self.__retrieve_child_blocks(block_id)
                 child_content, child_urls = self.__parse_blocks(child_blocks, depth + 1)
+
+                # Indent each line of child content to reflect hierarchy (visual tab)
                 content += (
                     "\n".join("\t" + line for line in child_content.split("\n"))
                     + "\n\n"
                 )
                 urls += child_urls
 
-        urls = list(set(urls))
+            # Deduplicate all collected URLs before returning
+            urls = list(set(urls))
 
-        return content.strip("\n "), urls
+            # Return cleaned content and list of links
+            return content.strip("\n "), urls
+        
+    # Purpose: To extract URLs from the rich text blocks of the Notion API.
+    def __extract_urls(self,rich_text: list[dict]) -> list[str]:
+        """Extract URLs from Notion rich text blocks.
+
+        Args:
+            rich_text: List of Notion rich text objects to extract URLs from.
+
+        Returns:
+            list[str]: List of normalized URLs found in the rich text.
+        """
+        urls = []
+        for text in rich_text: #iterating through each text object in the rich_text list
+            url = None
+            if text.get('href'): #using .get() to safely access the 'href' key without raising an error if it doesn't exist it returns None
+                url = text['href']
+            elif text.get('annotations',{}):
+                url = text['annotations']['url']
+
+            if url:
+                urls.append(self.__normalize_url(url)) #append adds one element to the end of list whereas extend adds element from an iterable -> go see this right now
+        
+        return urls
+    
+    def __normalize_url(self, url: str) -> str:
+        """Normalize a URL by ensuring it ends with a forward slash.
+
+        Args:
+            url: URL to normalize.
+
+        Returns:
+            str: Normalized URL with trailing slash.
+        """
+        if not url.endswith('/'):
+            url += '/'
+        return url
 
 
 
