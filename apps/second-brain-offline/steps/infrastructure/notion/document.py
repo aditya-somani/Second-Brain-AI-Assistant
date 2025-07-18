@@ -1,3 +1,13 @@
+# What it is: This code defines the NotionDocumentClient class, a specialized tool for fetching the complete content of a single Notion page. 
+# It recursively traverses all of a page's content blocks (like headings, text, lists, and even sub-pages) and converts them into a clean, 
+# flat Markdown string while also extracting all embedded URLs.
+
+# The Core Problem: This code solves the problem of deep content extraction and transformation. 
+# A Notion page isn't a single document but a hierarchical tree of "blocks." The API returns this raw, nested JSON structure. 
+# This client's job is to navigate this tree, make additional API calls for nested content, and transform the complex block-based data into a simple, 
+# standardized Markdown format that other systems can easily process.
+
+
 import requests
 from loguru import logger
 
